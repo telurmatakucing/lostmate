@@ -27,7 +27,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       const LostItemsFeed(),
       const ReportScreen(), // Ganti ReportLostItemScreen dengan ReportScreen
       const ChatScreen(),
-      ProfileScreen() // Berikan userId ke ProfileScreen
+      ProfileScreen(id: widget.id) // Berikan userId ke ProfileScreen
     ];
   }
 

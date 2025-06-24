@@ -65,28 +65,59 @@ class LostItemRepository {
           );
       return records.map((e) => LostItemReport.fromJson(e.toJson())).toList();
     } catch (e) {
+      print('Error fetching reports: $e'); // Logging untuk debugging
       throw Exception('Failed to load reports: $e');
     }
   }
 
-  Future<LostItemReport> createReport(LostItemReport report) async {
+  Future<LostItemReport> createReport(LostItemReport report, {File? image}) async {
     try {
+      http.MultipartFile? file;
+      if (image != null) {
+        file = http.MultipartFile.fromBytes(
+          'fotobarang',
+          await image.readAsBytes(),
+          filename: image.path.split('/').last,
+        );
+      }
+
+      if (!pb.authStore.isValid) {
+        throw Exception('Sesi autentikasi tidak valid');
+      }
+
       final record = await pb.collection('report').create(
-            body: report.toJson(),
+            body: {
+              ...report.toJson(),
+              'user_id': pb.authStore.model.id,
+            },
+            files: file != null ? [file] : [],
           );
+
       return LostItemReport.fromJson(record.toJson());
     } catch (e) {
+      print('Error creating report: $e'); // Logging untuk debugging
       throw Exception('Failed to create report: $e');
     }
   }
 
-  Future<void> updateReport(LostItemReport report) async {
+  Future<void> updateReport(LostItemReport report, {File? image}) async {
     try {
+      http.MultipartFile? file;
+      if (image != null) {
+        file = http.MultipartFile.fromBytes(
+          'fotobarang',
+          await image.readAsBytes(),
+          filename: image.path.split('/').last,
+        );
+      }
+
       await pb.collection('report').update(
             report.id!,
             body: report.toJson(),
+            files: file != null ? [file] : [],
           );
     } catch (e) {
+      print('Error updating report: $e'); // Logging untuk debugging
       throw Exception('Failed to update report: $e');
     }
   }
@@ -95,32 +126,8 @@ class LostItemRepository {
     try {
       await pb.collection('report').delete(id);
     } catch (e) {
+      print('Error deleting report: $e'); // Logging untuk debugging
       throw Exception('Failed to delete report: $e');
-    }
-  }
-
-  Future<String?> uploadImage(File image) async {
-    try {
-      final file = http.MultipartFile.fromBytes(
-        'fotobarang',
-        await image.readAsBytes(),
-        filename: image.path.split('/').last,
-      );
-
-      // Pastikan autentikasi masih valid sebelum unggah
-      if (!pb.authStore.isValid) {
-        throw Exception('Sesi autentikasi tidak valid');
-      }
-
-      final record = await pb.collection('report').create(
-            body: {}, // Data kosong untuk unggah file saja
-            files: [file],
-          );
-
-      return pb.files.getUrl(record, record.data['fotobarang']).toString();
-    } catch (e) {
-      print('Error uploading image: $e');
-      throw Exception('Failed to upload image: $e');
     }
   }
 }

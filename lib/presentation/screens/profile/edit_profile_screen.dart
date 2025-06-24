@@ -26,7 +26,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Future<void> _loadUserData() async {
     setState(() => _isLoading = true);
     try {
-      final data = await AuthService().getUserData() as Map<String, dynamic>?;
+    final data = await AuthService().getUserData(userId: widget.id); 
       _phoneController.text = data?["phone"] ?? "";
       _fakultasController.text = data?["fakultas"] ?? "";
       _jurusanController.text = data?["jurusan"] ?? "";

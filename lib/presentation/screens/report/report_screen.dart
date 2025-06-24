@@ -9,8 +9,6 @@ import 'package:lostmate/presentation/screens/report/Repository.dart'; // Pastik
 
 
 
-
-
 class ReportScreen extends StatefulWidget {
   const ReportScreen({Key? key}) : super(key: key);
 
@@ -20,49 +18,26 @@ class ReportScreen extends StatefulWidget {
 
 class _ReportScreenState extends State<ReportScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _loginFormKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _locationController = TextEditingController();
   final _dateController = TextEditingController();
   final _timeController = TextEditingController();
   final _contactController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
 
   DateTime? _selectedDate;
   TimeOfDay? _selectedTime;
   File? _imageFile;
   bool _isLoading = false;
   late LostItemRepository _repository;
-  bool _isLoggedIn = false;
 
   @override
   void initState() {
     super.initState();
+    _repository = LostItemRepository(PocketBase('http://127.0.0.1:8090')); // Ganti URL jika perlu
     _selectedDate = DateTime.now();
     _selectedTime = TimeOfDay.now();
     _updateDateTimeControllers();
-  }
-
-  Future<void> _login() async {
-    if (_loginFormKey.currentState!.validate()) {
-      try {
-        final pb = PocketBase('http://127.0.0.1:8090');
-        await pb.collection('users').authWithPassword(_emailController.text, _passwordController.text);
-        _repository = LostItemRepository(pb);
-        setState(() {
-          _isLoggedIn = true;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Login berhasil')),
-        );
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal login: $e. Periksa kredensial atau koneksi.')),
-        );
-      }
-    }
   }
 
   void _updateDateTimeControllers() {
@@ -82,8 +57,6 @@ class _ReportScreenState extends State<ReportScreen> {
     _dateController.dispose();
     _timeController.dispose();
     _contactController.dispose();
-    _emailController.dispose();
-    _passwordController.dispose();
     super.dispose();
   }
 
@@ -190,9 +163,9 @@ class _ReportScreenState extends State<ReportScreen> {
   }
 
   Future<void> _submitForm() async {
-    if (!_isLoggedIn) {
+    if (!_repository.pb.authStore.isValid) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Silakan login terlebih dahulu')),
+        const SnackBar(content: Text('Sesi autentikasi tidak valid, silakan login kembali')),
       );
       return;
     }
@@ -203,11 +176,7 @@ class _ReportScreenState extends State<ReportScreen> {
       });
 
       try {
-        String? imageUrl = null;
-        if (_imageFile != null) {
-          imageUrl = await _repository.uploadImage(_imageFile!);
-        }
-
+        // Persiapkan laporan
         final report = LostItemReport(
           namabarang: _titleController.text,
           deskripsi: _descriptionController.text,
@@ -215,11 +184,11 @@ class _ReportScreenState extends State<ReportScreen> {
           lostDate: _selectedDate!,
           waktuHilang: _timeController.text,
           kontak: _contactController.text,
-          fotobarang: imageUrl,
           createdAt: DateTime.now(),
         );
 
-        await _repository.createReport(report);
+        // Kirim laporan ke repository, dengan gambar opsional
+        await _repository.createReport(report, image: _imageFile);
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -234,6 +203,7 @@ class _ReportScreenState extends State<ReportScreen> {
           Navigator.pop(context);
         });
       } catch (e) {
+        print('Error submitting report: $e'); // Logging untuk debugging
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Gagal mengirim laporan: $e')),
         );
@@ -263,172 +233,124 @@ class _ReportScreenState extends State<ReportScreen> {
               child: SingleChildScrollView(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (!_isLoggedIn) ...[
-                        _buildSectionTitle('Login'),
-                        Form(
-                          key: _loginFormKey,
-                          child: Column(
-                            children: [
-                              TextFormField(
-                                controller: _emailController,
-                                decoration: _buildInputDecoration('Masukkan email'),
-                                validator: (value) =>
-                                    (value == null || value.isEmpty) ? 'Email tidak boleh kosong' : null,
-                              ),
-                              const SizedBox(height: 10),
-                              TextFormField(
-                                controller: _passwordController,
-                                decoration: _buildInputDecoration('Masukkan password'),
-                                obscureText: true,
-                                validator: (value) =>
-                                    (value == null || value.isEmpty) ? 'Password tidak boleh kosong' : null,
-                              ),
-                              const SizedBox(height: 20),
-                              SizedBox(
-                                width: double.infinity,
-                                height: 50,
-                                child: ElevatedButton(
-                                  onPressed: _login,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFFF9A826),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildSectionTitle('Judul Barang Hilang'),
+                        TextFormField(
+                          controller: _titleController,
+                          decoration: _buildInputDecoration('Masukkan judul barang hilang'),
+                          validator: (value) =>
+                              (value == null || value.isEmpty) ? 'Judul tidak boleh kosong' : null,
+                        ),
+                        const SizedBox(height: 20),
+
+                        _buildSectionTitle('Deskripsi'),
+                        TextFormField(
+                          controller: _descriptionController,
+                          maxLines: 5,
+                          decoration: _buildInputDecoration('Deskripsikan barang hilang dengan detail'),
+                          validator: (value) =>
+                              (value == null || value.isEmpty) ? 'Deskripsi tidak boleh kosong' : null,
+                        ),
+                        const SizedBox(height: 20),
+
+                        _buildSectionTitle('Lokasi Terakhir'),
+                        TextFormField(
+                          controller: _locationController,
+                          decoration: _buildInputDecoration('Masukkan lokasi terakhir barang'),
+                          validator: (value) =>
+                              (value == null || value.isEmpty) ? 'Lokasi tidak boleh kosong' : null,
+                        ),
+                        const SizedBox(height: 20),
+
+                        _buildSectionTitle('Tanggal Hilang'),
+                        TextFormField(
+                          controller: _dateController,
+                          readOnly: true,
+                          decoration: _buildInputDecoration('Pilih tanggal').copyWith(
+                            suffixIcon: const Icon(Icons.calendar_today),
+                          ),
+                          onTap: () => _selectDate(context),
+                          validator: (value) =>
+                              (value == null || value.isEmpty) ? 'Tanggal tidak boleh kosong' : null,
+                        ),
+                        const SizedBox(height: 20),
+
+                        _buildSectionTitle('Waktu Hilang'),
+                        TextFormField(
+                          controller: _timeController,
+                          readOnly: true,
+                          decoration: _buildInputDecoration('Pilih waktu').copyWith(
+                            suffixIcon: const Icon(Icons.access_time),
+                          ),
+                          onTap: () => _selectTime(context),
+                          validator: (value) =>
+                              (value == null || value.isEmpty) ? 'Waktu tidak boleh kosong' : null,
+                        ),
+                        const SizedBox(height: 20),
+
+                        _buildSectionTitle('Kontak'),
+                        TextFormField(
+                          controller: _contactController,
+                          keyboardType: TextInputType.phone,
+                          decoration: _buildInputDecoration('Masukkan nomor telepon yang bisa dihubungi'),
+                          validator: (value) =>
+                              (value == null || value.isEmpty) ? 'Kontak tidak boleh kosong' : null,
+                        ),
+                        const SizedBox(height: 20),
+
+                        _buildSectionTitle('Foto Barang (Opsional)'),
+                        const SizedBox(height: 8),
+                        InkWell(
+                          onTap: () => _showImageSourceActionSheet(context),
+                          child: Container(
+                            height: 200,
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              border: Border.all(color: Colors.grey.shade300),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: _imageFile != null
+                                ? ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Image.file(_imageFile!, fit: BoxFit.cover),
+                                  )
+                                : Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.add_a_photo, size: 50, color: Colors.grey.shade400),
+                                      const SizedBox(height: 8),
+                                      Text('Tambahkan Foto (Opsional)', style: TextStyle(color: Colors.grey.shade600)),
+                                    ],
                                   ),
-                                  child: const Text(
-                                    'Login',
-                                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                              ),
-                            ],
                           ),
                         ),
-                      ] else ...[
-                        Form(
-                          key: _formKey,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildSectionTitle('Judul Barang Hilang'),
-                              TextFormField(
-                                controller: _titleController,
-                                decoration: _buildInputDecoration('Masukkan judul barang hilang'),
-                                validator: (value) =>
-                                    (value == null || value.isEmpty) ? 'Judul tidak boleh kosong' : null,
-                              ),
-                              const SizedBox(height: 20),
+                        const SizedBox(height: 30),
 
-                              _buildSectionTitle('Deskripsi'),
-                              TextFormField(
-                                controller: _descriptionController,
-                                maxLines: 5,
-                                decoration: _buildInputDecoration('Deskripsikan barang hilang dengan detail'),
-                                validator: (value) =>
-                                    (value == null || value.isEmpty) ? 'Deskripsi tidak boleh kosong' : null,
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: ElevatedButton(
+                            onPressed: _isLoading ? null : _submitForm,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFF9A826),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
                               ),
-                              const SizedBox(height: 20),
-
-                              _buildSectionTitle('Lokasi Terakhir'),
-                              TextFormField(
-                                controller: _locationController,
-                                decoration: _buildInputDecoration('Masukkan lokasi terakhir barang'),
-                                validator: (value) =>
-                                    (value == null || value.isEmpty) ? 'Lokasi tidak boleh kosong' : null,
-                              ),
-                              const SizedBox(height: 20),
-
-                              _buildSectionTitle('Tanggal Hilang'),
-                              TextFormField(
-                                controller: _dateController,
-                                readOnly: true,
-                                decoration: _buildInputDecoration('Pilih tanggal').copyWith(
-                                  suffixIcon: const Icon(Icons.calendar_today),
-                                ),
-                                onTap: () => _selectDate(context),
-                                validator: (value) =>
-                                    (value == null || value.isEmpty) ? 'Tanggal tidak boleh kosong' : null,
-                              ),
-                              const SizedBox(height: 20),
-
-                              _buildSectionTitle('Waktu Hilang'),
-                              TextFormField(
-                                controller: _timeController,
-                                readOnly: true,
-                                decoration: _buildInputDecoration('Pilih waktu').copyWith(
-                                  suffixIcon: const Icon(Icons.access_time),
-                                ),
-                                onTap: () => _selectTime(context),
-                                validator: (value) =>
-                                    (value == null || value.isEmpty) ? 'Waktu tidak boleh kosong' : null,
-                              ),
-                              const SizedBox(height: 20),
-
-                              _buildSectionTitle('Kontak'),
-                              TextFormField(
-                                controller: _contactController,
-                                keyboardType: TextInputType.phone,
-                                decoration: _buildInputDecoration('Masukkan nomor telepon yang bisa dihubungi'),
-                                validator: (value) =>
-                                    (value == null || value.isEmpty) ? 'Kontak tidak boleh kosong' : null,
-                              ),
-                              const SizedBox(height: 20),
-
-                              _buildSectionTitle('Foto Barang'),
-                              const SizedBox(height: 8),
-                              InkWell(
-                                onTap: () => _showImageSourceActionSheet(context),
-                                child: Container(
-                                  height: 200,
-                                  width: double.infinity,
-                                  decoration: BoxDecoration(
-                                    border: Border.all(color: Colors.grey.shade300),
-                                    borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: _isLoading
+                                ? const CircularProgressIndicator(color: Colors.white)
+                                : const Text(
+                                    'Kirim Laporan',
+                                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                                   ),
-                                  child: _imageFile != null
-                                      ? ClipRRect(
-                                          borderRadius: BorderRadius.circular(12),
-                                          child: Image.file(_imageFile!, fit: BoxFit.cover),
-                                        )
-                                      : Column(
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          children: [
-                                            Icon(Icons.add_a_photo, size: 50, color: Colors.grey.shade400),
-                                            const SizedBox(height: 8),
-                                            Text('Tambahkan Foto (Opsional)', style: TextStyle(color: Colors.grey.shade600)),
-                                          ],
-                                        ),
-                                ),
-                              ),
-                              const SizedBox(height: 30),
-
-                              SizedBox(
-                                width: double.infinity,
-                                height: 50,
-                                child: ElevatedButton(
-                                  onPressed: _isLoading ? null : _submitForm,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFFF9A826),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                  ),
-                                  child: _isLoading
-                                      ? const CircularProgressIndicator(color: Colors.white)
-                                      : const Text(
-                                          'Kirim Laporan',
-                                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                                        ),
-                                ),
-                              ),
-                            ],
                           ),
                         ),
                       ],
-                    ],
+                    ),
                   ),
                 ),
               ),
